@@ -1,0 +1,167 @@
+#!/usr/bin/perl
+use strict;
+# ABSTRACT = 'get a screenshots within a movie file'
+use LEOCHARRE::Dir ':all';
+use String::ShellQuote 'shell_quote';
+use LEOCHARRE::Basename ':all';
+use Getopt::Std::Strict 'hvf:s:o:S:Xdn';
+our $VERSION = sprintf "%d.%02d", q$Revision: 1.2 $ =~ /(\d+)/g;
+
+$opt_h and print STDERR usage() and exit;
+$opt_v and print "$VERSION\n" and exit;
+
+sub debug { $opt_d and warn("$0: @_\n"); 1 }
+
+sub usage {q{moviecap [OPTION].. MOVIEFILE..
+Get a screenshot within a MOVIEFILE
+
+   -f number      frame count, default 1
+   -s number      seconds to skip per frame, default 5
+   -o dir         path to output directory, default is cwd
+   -S number      seconds in to start
+   -X             disable -forceidx
+   -h             help
+   -v             version
+   -n             show the shell commands
+
+Try 'man moviecap' for more info.
+}}
+
+$opt_f ||= 1;
+$opt_s ||= 5;
+
+my @ss;
+$opt_S ||= 0;
+
+my $in= $opt_S;
+
+for ( 0 .. $opt_f ){
+   $in = ($in + $opt_s);        
+   push @ss, $in;
+}
+
+debug("steps used: @ss");
+
+my @files = map { abs_file_or_die($_) } @ARGV;
+
+
+if ($opt_o){
+   $opt_o = abs_dir_or_die($opt_o);
+}
+   
+
+MOVIE: for my $abs (@files){
+
+   my $abs_loc = abs_loc($abs);
+   my $basename = filename($abs);
+   my $name = filename_only($abs);
+
+
+
+   debug("abs loc '$abs_loc', basename: '$basename'");
+
+   $opt_o ||= $abs_loc;
+
+
+   my $d = `mktemp -d /tmp/caps.XXX`;
+   $d=~s/^\s+|\s+$//g;
+
+   (chdir $d) or die;   
+   
+   
+   for my $seconds (@ss){
+      my $ss;
+      # transform seconds to hh:mm:ss
+      # Convert seconds to days, hours, minutes, seconds
+      my @parts = gmtime($seconds);
+      $ss = sprintf '%02d:%02d:%02d', @parts[2,1,0];     
+
+      my $force = $opt_X ? '' : '-forceidx'; # disable forceidx? 
+      
+      my $cmd = sprintf "mplayer $force -quiet -vo jpeg:quality=95 -nosound -frames 1 -ss $ss %s > /dev/null 2>&1", shell_quote($abs);
+      if ($opt_n){
+         warn("$cmd\n");
+      }
+
+      sysx($cmd);
+
+      my @f = lsfa($d);
+      my $out = $f[0];
+      my $to = sprintf "%s/%s_%s.jpg", $opt_o, $name, $ss;
+      debug("ran:\n$cmd\nfiles: @f");
+      
+      my $cmd2 = sprintf 'mv %s %s',shell_quote($out),shell_quote($to);
+      $opt_n and warn($cmd2);
+      sysx($cmd2);
+      
+      print "$to\n";
+   }
+
+}
+
+
+
+sub sys;
+sub sysd;
+sub sysx;
+sub sys  { (system(@_) == 0) ? 1 : ( warn("Failed system(@_), $!") and 0 ) }
+sub sysd { (system(@_) == 0) ? 1 :   die("Failed system(@_), $!") }
+sub sysx { (system(@_) == 0) ? 1 : ( warn("Failed system(@_), $!") and exit 1 ) }
+
+
+
+
+
+
+__END__
+
+=pod
+
+=head1 NAME
+
+moviecap - get a screenshots within a movie file
+
+=head1 DESCRIPTION
+
+Helps to get a movie screenshot.
+Creates a tempdir to make caps in, and renames the files like the movie.
+
+
+=head1 USAGE
+
+moviecap [OPTIONS].. MOVIEFILE..
+
+
+   -f number      frame count, default 1
+   -s number      seconds to skip per frame, default 5
+   -o dir         path to output directory, default is cwd
+   -S number      seconds in to start
+   -X             disable -forceidx
+   -h             help
+   -v             version
+
+
+=head2 USAGE EXAMPLES
+
+Five frames, 25 secs inbetween each, output to current dir:
+
+   moviecap -f 5 -s 25 ./movie.avi
+
+=head1 AUTHOR
+
+Leo Charre leocharre at cpan dot org
+
+=head1 LICENSE
+
+This package is free software; you can redistribute it and/or modify it under the same terms as Perl itself, i.e., under the terms of the "Artistic License" or the "GNU General Public License".
+
+=head1 DISCLAIMER
+
+This package is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+See the "GNU General Public License" for more details.
+
+=cut
+
+
+
